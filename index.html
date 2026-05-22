@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PDF Diff Checker (Interactive)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- PDF.js for rendering PDFs in the browser -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <!-- jsPDF for downloading the result -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <style>
+        .drag-active {
+            border-color: #3b82f6;
+            background-color: #eff6ff;
+        }
+        input[type=range] {
+            accent-color: #3b82f6;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen flex flex-col font-sans text-gray-800">
+    <!-- Header -->
+    <header class="bg-white shadow-sm py-4 sticky top-0 z-50">
+        <div class="max-w-6xl mx-auto px-4 flex items-center justify-between">
+            <h1 class="text-2xl font-bold text-blue-600 flex items-center gap-2">
+                <i class="fa-solid fa-file-pdf"></i> PDF Diff Checker
+            </h1>
+            <div class="flex items-center gap-4">
+                <a href="https://github.com" target="_blank" class="text-gray-500 hover:text-gray-900">
+                    <i class="fa-brands fa-github text-xl"></i>
+                </a>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="flex-grow max-w-6xl mx-auto w-full px-4 py-8 flex flex-col items-center">
+        
+        <!-- Upload Section -->
+        <div id="uploadSection" class="bg-white p-8 rounded-xl shadow-md w-full max-w-4xl mb-8">
+            <div class="text-center mb-8">
+                <h2 class="text-3xl font-extrabold mb-2">Compare Two PDFs Instantly</h2>
+                <p class="text-gray-600">Upload an old version and a new version to highlight the differences.</p>
+            </div>
+
+            <form id="uploadForm" class="space-y-6">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <!-- PDF 1 Upload -->
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Old PDF (Base)</label>
+                        <div id="dropzone1" class="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center cursor-pointer hover:bg-gray-50 transition-colors relative">
+                            <input type="file" id="pdf1" accept=".pdf" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer" required>
+                            <div class="pointer-events-none">
+                                <i class="fa-solid fa-cloud-arrow-up text-3xl text-gray-400 mb-2"></i>
+                                <p class="text-sm text-gray-500" id="filename1">Drag & drop or click to browse</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- PDF 2 Upload -->
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">New PDF (Modified)</label>
+                        <div id="dropzone2" class="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center cursor-pointer hover:bg-gray-50 transition-colors relative">
+                            <input type="file" id="pdf2" accept=".pdf" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer" required>
+                            <div class="pointer-events-none">
+                                <i class="fa-solid fa-cloud-arrow-up text-3xl text-gray-400 mb-2"></i>
+                                <p class="text-sm text-gray-500" id="filename2">Drag & drop or click to browse</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Error Message -->
+                <div id="errorMessage" class="hidden bg-red-50 text-red-600 p-3 rounded-md text-sm text-center"></div>
+
+                <!-- Submit Button -->
+                <button type="submit" id="submitBtn" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-4 rounded-lg transition-colors flex justify-center items-center gap-2">
+                    <i class="fa-solid fa-code-compare"></i> Compare PDFs
+                </button>
+            </form>
+
+            <!-- Loading State -->
+            <div id="loader" class="mt-8 text-center flex flex-col items-center hidden">
+                <div class="w-full max-w-md bg-gray-200 rounded-full h-2.5 mb-4">
+                    <div id="progressBar" class="bg-blue-600 h-2.5 rounded-full transition-all duration-300 ease-out" style="width: 0%"></div>
+                </div>
+                <div class="flex items-center gap-3">
+                    <div class="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+                    <p id="loadingText" class="text-gray-600 font-medium">Processing pages...</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Interactive Controls (Hidden initially) -->
+        <div id="controlsSection" class="hidden w-full max-w-4xl bg-white p-6 rounded-xl shadow-md mb-8 sticky top-20 z-40 border border-gray-200">
+            <div class="flex flex-col md:flex-row items-center justify-between gap-6">
+                
+                <!-- Legend -->
+                <div class="flex items-center gap-6">
+                    <div class="flex items-center gap-2">
+                        <div class="w-4 h-4 rounded bg-red-600"></div>
+                        <span class="text-sm font-medium text-gray-700">Deleted (Old)</span>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <div class="w-4 h-4 rounded bg-blue-600"></div>
+                        <span class="text-sm font-medium text-gray-700">Added (New)</span>
+                    </div>
+                </div>
+
+                <!-- Transparency Slider -->
+                <div class="flex-grow max-w-md flex items-center gap-4">
+                    <label for="opacitySlider" class="text-sm font-medium text-gray-700 whitespace-nowrap">Identical Text Opacity:</label>
+                    <input type="range" id="opacitySlider" min="0" max="100" value="30" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer">
+                    <span id="opacityValue" class="text-sm font-bold text-gray-700 w-12 text-right">30%</span>
+                </div>
+
+                <!-- Download Button -->
+                <button id="downloadBtn" class="bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-6 rounded-lg transition-colors flex items-center gap-2">
+                    <i class="fa-solid fa-download"></i> Download PDF
+                </button>
+            </div>
+        </div>
+
+        <!-- PDF Pages Container -->
+        <div id="pagesContainer" class="w-full flex flex-col items-center gap-8">
+            <!-- Pages will be injected here by JS -->
+        </div>
+
+    </main>
+
+    <script src="script.js"></script>
+</body>
+</html>
