@@ -1,6 +1,8 @@
 // Configure PDF.js worker
 pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
+const DISPLAY_SCALE = 1.5; // Screen preview only (faster)
+
 document.addEventListener('DOMContentLoaded', () => {
     const form = document.getElementById('uploadForm');
     const pdf1Input = document.getElementById('pdf1');
@@ -12,17 +14,115 @@ document.addEventListener('DOMContentLoaded', () => {
     const progressBar = document.getElementById('progressBar');
     const loadingText = document.getElementById('loadingText');
     const errorMessage = document.getElementById('errorMessage');
-    
+
     const controlsSection = document.getElementById('controlsSection');
     const pagesContainer = document.getElementById('pagesContainer');
     const opacitySlider = document.getElementById('opacitySlider');
     const opacityValue = document.getElementById('opacityValue');
+    const exportDpi = document.getElementById('exportDpi');
     const downloadBtn = document.getElementById('downloadBtn');
 
-    // Store canvases for downloading later
-    let pageCanvases = [];
+    let pdfDoc1 = null;
+    let pdfDoc2 = null;
+    let numPages = 0;
 
-    // Handle file selection display
+    const readFileAsArrayBuffer = (file) => {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = (e) => resolve(e.target.result);
+            reader.onerror = (e) => reject(e);
+            reader.readAsArrayBuffer(file);
+        });
+    };
+
+    const renderPageToCanvas = async (pdf, pageNum, scale) => {
+        if (pageNum > pdf.numPages) return null;
+        const page = await pdf.getPage(pageNum);
+        const viewport = page.getViewport({ scale });
+
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        canvas.width = viewport.width;
+        canvas.height = viewport.height;
+
+        ctx.fillStyle = 'white';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        await page.render({ canvasContext: ctx, viewport }).promise;
+        return { canvas, ctx, width: canvas.width, height: canvas.height };
+    };
+
+    const buildDiffLayers = (pixels1, pixels2, width, height) => {
+        const identicalCanvas = document.createElement('canvas');
+        const diffCanvas = document.createElement('canvas');
+        identicalCanvas.width = diffCanvas.width = width;
+        identicalCanvas.height = diffCanvas.height = height;
+
+        const idCtx = identicalCanvas.getContext('2d');
+        const diffCtx = diffCanvas.getContext('2d');
+        const identicalData = idCtx.createImageData(width, height);
+        const diffData = diffCtx.createImageData(width, height);
+
+        for (let j = 0; j < pixels1.length; j += 4) {
+            const r1 = pixels1[j], g1 = pixels1[j + 1], b1 = pixels1[j + 2];
+            const r2 = pixels2[j], g2 = pixels2[j + 1], b2 = pixels2[j + 2];
+            const lum1 = (r1 + g1 + b1) / 3;
+            const lum2 = (r2 + g2 + b2) / 3;
+
+            if (Math.abs(lum1 - lum2) < 20) {
+                identicalData.data[j] = r2;
+                identicalData.data[j + 1] = g2;
+                identicalData.data[j + 2] = b2;
+                identicalData.data[j + 3] = 255;
+                diffData.data[j + 3] = 0;
+            } else {
+                identicalData.data[j + 3] = 0;
+                diffData.data[j + 3] = 255;
+                if (lum1 < lum2) {
+                    diffData.data[j] = 220;
+                    diffData.data[j + 1] = 38;
+                    diffData.data[j + 2] = 38;
+                } else {
+                    diffData.data[j] = 37;
+                    diffData.data[j + 1] = 99;
+                    diffData.data[j + 2] = 235;
+                }
+            }
+        }
+
+        idCtx.putImageData(identicalData, 0, 0);
+        diffCtx.putImageData(diffData, 0, 0);
+        return { identicalCanvas, diffCanvas, width, height };
+    };
+
+    const comparePageAtScale = async (pdf1, pdf2, pageNum, scale) => {
+        const page1 = await renderPageToCanvas(pdf1, pageNum, scale);
+        const page2 = await renderPageToCanvas(pdf2, pageNum, scale);
+
+        const width = page1 ? page1.width : page2.width;
+        const height = page1 ? page1.height : page2.height;
+        const blankData = new Uint8ClampedArray(width * height * 4).fill(255);
+        const pixels1 = page1 ? page1.ctx.getImageData(0, 0, width, height).data : blankData;
+        const pixels2 = page2 ? page2.ctx.getImageData(0, 0, width, height).data : blankData;
+
+        return buildDiffLayers(pixels1, pixels2, width, height);
+    };
+
+    const mergeLayersToCanvas = (identicalCanvas, diffCanvas, width, height, opacity) => {
+        const tempCanvas = document.createElement('canvas');
+        tempCanvas.width = width;
+        tempCanvas.height = height;
+        const ctx = tempCanvas.getContext('2d');
+
+        ctx.fillStyle = 'white';
+        ctx.fillRect(0, 0, width, height);
+        ctx.globalAlpha = opacity;
+        ctx.drawImage(identicalCanvas, 0, 0);
+        ctx.globalAlpha = 1.0;
+        ctx.drawImage(diffCanvas, 0, 0);
+        return tempCanvas;
+    };
+
     pdf1Input.addEventListener('change', (e) => updateFilename(e.target, filename1));
     pdf2Input.addEventListener('change', (e) => updateFilename(e.target, filename2));
 
@@ -38,44 +138,15 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // Helper to read file as ArrayBuffer
-    const readFileAsArrayBuffer = (file) => {
-        return new Promise((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onload = (e) => resolve(e.target.result);
-            reader.onerror = (e) => reject(e);
-            reader.readAsArrayBuffer(file);
-        });
-    };
-
-    // Helper to render a PDF page to a canvas
-    const renderPageToCanvas = async (pdf, pageNum, scale = 1.5) => {
-        if (pageNum > pdf.numPages) return null;
-        const page = await pdf.getPage(pageNum);
-        const viewport = page.getViewport({ scale });
-        
-        const canvas = document.createElement('canvas');
-        const ctx = canvas.getContext('2d');
-        canvas.width = viewport.width;
-        canvas.height = viewport.height;
-
-        // Fill white background
-        ctx.fillStyle = 'white';
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-        await page.render({ canvasContext: ctx, viewport }).promise;
-        return { canvas, ctx, width: canvas.width, height: canvas.height };
-    };
-
-    // Handle form submission
     form.addEventListener('submit', async (e) => {
         e.preventDefault();
-        
+
         errorMessage.classList.add('hidden');
         controlsSection.classList.add('hidden');
         pagesContainer.innerHTML = '';
-        pageCanvases = [];
-        
+        pdfDoc1 = null;
+        pdfDoc2 = null;
+
         if (!pdf1Input.files[0] || !pdf2Input.files[0]) {
             showError('Please select both PDF files.');
             return;
@@ -88,100 +159,28 @@ document.addEventListener('DOMContentLoaded', () => {
         loadingText.textContent = 'Loading PDFs...';
 
         try {
-            // 1. Load PDFs
             const data1 = await readFileAsArrayBuffer(pdf1Input.files[0]);
             const data2 = await readFileAsArrayBuffer(pdf2Input.files[0]);
 
-            const pdf1 = await pdfjsLib.getDocument({ data: data1 }).promise;
-            const pdf2 = await pdfjsLib.getDocument({ data: data2 }).promise;
+            pdfDoc1 = await pdfjsLib.getDocument({ data: data1 }).promise;
+            pdfDoc2 = await pdfjsLib.getDocument({ data: data2 }).promise;
+            numPages = Math.max(pdfDoc1.numPages, pdfDoc2.numPages);
 
-            const numPages = Math.max(pdf1.numPages, pdf2.numPages);
-
-            // 2. Process page by page
             for (let i = 1; i <= numPages; i++) {
                 loadingText.textContent = `Comparing page ${i} of ${numPages}...`;
                 progressBar.style.width = `${(i / numPages) * 100}%`;
 
-                const page1 = await renderPageToCanvas(pdf1, i);
-                const page2 = await renderPageToCanvas(pdf2, i);
+                const { identicalCanvas, diffCanvas, width, height } =
+                    await comparePageAtScale(pdfDoc1, pdfDoc2, i, DISPLAY_SCALE);
 
-                const width = page1 ? page1.width : page2.width;
-                const height = page1 ? page1.height : page2.height;
-
-                // Create DOM canvases
-                const identicalCanvas = document.createElement('canvas');
-                const diffCanvas = document.createElement('canvas');
-                identicalCanvas.width = diffCanvas.width = width;
-                identicalCanvas.height = diffCanvas.height = height;
-                
-                // Styling for stacking them perfectly
                 identicalCanvas.className = 'identical-layer absolute top-0 left-0 w-full h-full object-contain transition-opacity duration-200';
                 diffCanvas.className = 'diff-layer absolute top-0 left-0 w-full h-full object-contain pointer-events-none';
-                
-                // Apply initial opacity
                 identicalCanvas.style.opacity = opacitySlider.value / 100;
 
-                const idCtx = identicalCanvas.getContext('2d');
-                const diffCtx = diffCanvas.getContext('2d');
-
-                const identicalData = idCtx.createImageData(width, height);
-                const diffData = diffCtx.createImageData(width, height);
-
-                // Get pixel data (handle missing pages by treating them as blank white)
-                const blankData = new Uint8ClampedArray(width * height * 4).fill(255);
-                const pixels1 = page1 ? page1.ctx.getImageData(0, 0, width, height).data : blankData;
-                const pixels2 = page2 ? page2.ctx.getImageData(0, 0, width, height).data : blankData;
-
-                // Pixel comparison loop
-                for (let j = 0; j < pixels1.length; j += 4) {
-                    const r1 = pixels1[j], g1 = pixels1[j+1], b1 = pixels1[j+2];
-                    const r2 = pixels2[j], g2 = pixels2[j+1], b2 = pixels2[j+2];
-
-                    // Calculate perceived brightness (luminance)
-                    const lum1 = (r1 + g1 + b1) / 3;
-                    const lum2 = (r2 + g2 + b2) / 3;
-
-                    // If pixels are very similar
-                    if (Math.abs(lum1 - lum2) < 20) {
-                        // Put in identical layer
-                        identicalData.data[j] = r2;
-                        identicalData.data[j+1] = g2;
-                        identicalData.data[j+2] = b2;
-                        identicalData.data[j+3] = 255; // Keep fully opaque (CSS handles the fading)
-
-                        // Transparent in diff layer
-                        diffData.data[j+3] = 0;
-                    } else {
-                        // Pixels are different
-                        // Transparent in identical layer
-                        identicalData.data[j+3] = 0;
-                        
-                        // Opaque in diff layer
-                        diffData.data[j+3] = 255;
-
-                        if (lum1 < lum2) {
-                            // PDF1 is darker (text removed) -> Dark Red
-                            diffData.data[j] = 220;     // R
-                            diffData.data[j+1] = 38;    // G
-                            diffData.data[j+2] = 38;    // B
-                        } else {
-                            // PDF2 is darker (text added) -> Dark Blue
-                            diffData.data[j] = 37;      // R
-                            diffData.data[j+1] = 99;    // G
-                            diffData.data[j+2] = 235;   // B
-                        }
-                    }
-                }
-
-                idCtx.putImageData(identicalData, 0, 0);
-                diffCtx.putImageData(diffData, 0, 0);
-
-                // Create a container for this page
                 const pageContainer = document.createElement('div');
                 pageContainer.className = 'relative w-full max-w-4xl bg-white shadow-lg border border-gray-300';
                 pageContainer.style.aspectRatio = `${width} / ${height}`;
 
-                // Add a page number badge
                 const pageBadge = document.createElement('div');
                 pageBadge.className = 'absolute -left-12 top-4 bg-gray-800 text-white font-bold py-1 px-3 rounded-l-lg shadow-md z-10';
                 pageBadge.textContent = `Pg ${i}`;
@@ -189,19 +188,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 pageContainer.appendChild(pageBadge);
                 pageContainer.appendChild(identicalCanvas);
                 pageContainer.appendChild(diffCanvas);
-                
                 pagesContainer.appendChild(pageContainer);
-
-                // Store for downloading later
-                pageCanvases.push({ identicalCanvas, diffCanvas, width, height });
             }
 
-            // Show controls
             controlsSection.classList.remove('hidden');
-            
-            // Scroll to results
             controlsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
-
         } catch (error) {
             console.error(error);
             showError('Failed to process PDFs. They might be corrupted or password protected.');
@@ -212,75 +203,66 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    // Handle Opacity Slider
     opacitySlider.addEventListener('input', (e) => {
         const val = e.target.value;
         opacityValue.textContent = `${val}%`;
         const opacity = val / 100;
-        
-        document.querySelectorAll('.identical-layer').forEach(canvas => {
+        document.querySelectorAll('.identical-layer').forEach((canvas) => {
             canvas.style.opacity = opacity;
         });
     });
 
-    // Handle Download
     downloadBtn.addEventListener('click', async () => {
-        if (pageCanvases.length === 0) return;
+        if (!pdfDoc1 || !pdfDoc2 || numPages === 0) return;
+
+        const dpi = parseInt(exportDpi.value, 10);
+        const exportScale = dpi / 72;
+        const currentOpacity = opacitySlider.value / 100;
+        const jpegQuality = dpi >= 300 ? 0.92 : dpi >= 200 ? 0.88 : 0.85;
 
         const originalText = downloadBtn.innerHTML;
-        downloadBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Generating PDF...';
+        downloadBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Exporting...';
         downloadBtn.disabled = true;
+        exportDpi.disabled = true;
 
         try {
             const { jsPDF } = window.jspdf;
-            const pdf = new jsPDF('p', 'pt', 'a4');
-            const pdfWidth = pdf.internal.pageSize.getWidth();
-            const pdfHeight = pdf.internal.pageSize.getHeight();
+            let pdf = null;
 
-            const currentOpacity = opacitySlider.value / 100;
+            loader.style.display = 'flex';
+            for (let i = 1; i <= numPages; i++) {
+                loadingText.textContent = `Exporting page ${i} of ${numPages} at ${dpi} DPI...`;
+                progressBar.style.width = `${(i / numPages) * 100}%`;
 
-            for (let i = 0; i < pageCanvases.length; i++) {
-                if (i > 0) pdf.addPage();
+                const { identicalCanvas, diffCanvas, width, height } =
+                    await comparePageAtScale(pdfDoc1, pdfDoc2, i, exportScale);
 
-                const { identicalCanvas, diffCanvas, width, height } = pageCanvases[i];
+                const merged = mergeLayersToCanvas(identicalCanvas, diffCanvas, width, height, currentOpacity);
+                const imgData = merged.toDataURL('image/jpeg', jpegQuality);
 
-                // Create a temporary canvas to merge the layers with the current opacity
-                const tempCanvas = document.createElement('canvas');
-                tempCanvas.width = width;
-                tempCanvas.height = height;
-                const ctx = tempCanvas.getContext('2d');
+                if (i === 1) {
+                    pdf = new jsPDF({
+                        orientation: width > height ? 'l' : 'p',
+                        unit: 'px',
+                        format: [width, height],
+                        compress: true
+                    });
+                } else {
+                    pdf.addPage([width, height], width > height ? 'l' : 'p');
+                }
 
-                // Fill white background
-                ctx.fillStyle = 'white';
-                ctx.fillRect(0, 0, width, height);
-
-                // Draw identical layer with opacity
-                ctx.globalAlpha = currentOpacity;
-                ctx.drawImage(identicalCanvas, 0, 0);
-
-                // Draw diff layer fully opaque
-                ctx.globalAlpha = 1.0;
-                ctx.drawImage(diffCanvas, 0, 0);
-
-                // Calculate scaling to fit A4
-                const ratio = Math.min(pdfWidth / width, pdfHeight / height);
-                const scaledWidth = width * ratio;
-                const scaledHeight = height * ratio;
-                const x = (pdfWidth - scaledWidth) / 2;
-                const y = (pdfHeight - scaledHeight) / 2;
-
-                // Add to PDF
-                const imgData = tempCanvas.toDataURL('image/jpeg', 0.8);
-                pdf.addImage(imgData, 'JPEG', x, y, scaledWidth, scaledHeight);
+                pdf.addImage(imgData, 'JPEG', 0, 0, width, height);
             }
 
-            pdf.save(`diff_${pdf1Input.files[0].name}_vs_${pdf2Input.files[0].name}.pdf`);
+            pdf.save(`diff_${dpi}dpi_${pdf1Input.files[0].name}_vs_${pdf2Input.files[0].name}.pdf`);
         } catch (err) {
             console.error(err);
-            alert('Failed to generate PDF download.');
+            alert('Failed to generate PDF. Try a lower resolution if the file is very large.');
         } finally {
             downloadBtn.innerHTML = originalText;
             downloadBtn.disabled = false;
+            exportDpi.disabled = false;
+            loader.style.display = 'none';
         }
     });
 
@@ -289,22 +271,21 @@ document.addEventListener('DOMContentLoaded', () => {
         errorMessage.classList.remove('hidden');
     }
 
-    // Drag and drop visual feedback
     const dropzones = [
         { zone: document.getElementById('dropzone1'), input: pdf1Input },
         { zone: document.getElementById('dropzone2'), input: pdf2Input }
     ];
 
     dropzones.forEach(({ zone, input }) => {
-        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach((eventName) => {
             zone.addEventListener(eventName, (e) => { e.preventDefault(); e.stopPropagation(); }, false);
         });
 
-        ['dragenter', 'dragover'].forEach(eventName => {
+        ['dragenter', 'dragover'].forEach((eventName) => {
             zone.addEventListener(eventName, () => zone.classList.add('drag-active'), false);
         });
 
-        ['dragleave', 'drop'].forEach(eventName => {
+        ['dragleave', 'drop'].forEach((eventName) => {
             zone.addEventListener(eventName, () => zone.classList.remove('drag-active'), false);
         });
 

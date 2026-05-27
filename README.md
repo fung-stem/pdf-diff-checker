@@ -12,7 +12,8 @@ Compare two PDF documents side by side in your browser. Upload an old version an
 - Page-by-page visual comparison
 - **Deleted text** shown in dark red, **added text** in dark blue
 - **Identical Text Opacity** slider (0% = invisible, 100% = fully visible)
-- Download the comparison as a new PDF (respects your opacity setting)
+- Download the comparison as a new PDF with selectable export resolution (150–400 DPI)
+- Export respects your opacity setting and re-renders at full quality (not upscaled from the preview)
 - Works on GitHub Pages — free public hosting, no backend required
 
 ---

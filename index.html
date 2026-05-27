@@ -95,31 +95,47 @@
 
         <!-- Interactive Controls (Hidden initially) -->
         <div id="controlsSection" class="hidden w-full max-w-4xl bg-white p-6 rounded-xl shadow-md mb-8 sticky top-20 z-40 border border-gray-200">
-            <div class="flex flex-col md:flex-row items-center justify-between gap-6">
-                
-                <!-- Legend -->
-                <div class="flex items-center gap-6">
-                    <div class="flex items-center gap-2">
-                        <div class="w-4 h-4 rounded bg-red-600"></div>
-                        <span class="text-sm font-medium text-gray-700">Deleted (Old)</span>
+            <div class="flex flex-col gap-5">
+                <div class="flex flex-col md:flex-row items-center justify-between gap-6">
+                    <!-- Legend -->
+                    <div class="flex items-center gap-6">
+                        <div class="flex items-center gap-2">
+                            <div class="w-4 h-4 rounded bg-red-600"></div>
+                            <span class="text-sm font-medium text-gray-700">Deleted (Old)</span>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <div class="w-4 h-4 rounded bg-blue-600"></div>
+                            <span class="text-sm font-medium text-gray-700">Added (New)</span>
+                        </div>
                     </div>
-                    <div class="flex items-center gap-2">
-                        <div class="w-4 h-4 rounded bg-blue-600"></div>
-                        <span class="text-sm font-medium text-gray-700">Added (New)</span>
+
+                    <!-- Transparency Slider -->
+                    <div class="flex-grow max-w-md flex items-center gap-4">
+                        <label for="opacitySlider" class="text-sm font-medium text-gray-700 whitespace-nowrap">Identical Text Opacity:</label>
+                        <input type="range" id="opacitySlider" min="0" max="100" value="30" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer">
+                        <span id="opacityValue" class="text-sm font-bold text-gray-700 w-12 text-right">30%</span>
                     </div>
                 </div>
 
-                <!-- Transparency Slider -->
-                <div class="flex-grow max-w-md flex items-center gap-4">
-                    <label for="opacitySlider" class="text-sm font-medium text-gray-700 whitespace-nowrap">Identical Text Opacity:</label>
-                    <input type="range" id="opacitySlider" min="0" max="100" value="30" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer">
-                    <span id="opacityValue" class="text-sm font-bold text-gray-700 w-12 text-right">30%</span>
-                </div>
+                <div class="flex flex-col sm:flex-row items-center justify-between gap-4 pt-4 border-t border-gray-100">
+                    <!-- Export resolution -->
+                    <div class="flex items-center gap-3 w-full sm:w-auto">
+                        <label for="exportDpi" class="text-sm font-medium text-gray-700 whitespace-nowrap">Export resolution:</label>
+                        <select id="exportDpi" class="flex-grow sm:flex-grow-0 text-sm border border-gray-300 rounded-lg px-3 py-2 bg-white text-gray-800 focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                            <option value="150">150 DPI — Standard</option>
+                            <option value="200">200 DPI — High</option>
+                            <option value="300" selected>300 DPI — Print quality</option>
+                            <option value="400">400 DPI — Very high (slower)</option>
+                        </select>
+                    </div>
 
-                <!-- Download Button -->
-                <button id="downloadBtn" class="bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-6 rounded-lg transition-colors flex items-center gap-2">
-                    <i class="fa-solid fa-download"></i> Download PDF
-                </button>
+                    <p id="exportHint" class="text-xs text-gray-500 text-center sm:text-left flex-grow">Higher DPI = sharper export. Re-renders on download (not upscaled).</p>
+
+                    <!-- Download Button -->
+                    <button id="downloadBtn" class="w-full sm:w-auto bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-6 rounded-lg transition-colors flex justify-center items-center gap-2 shrink-0">
+                        <i class="fa-solid fa-download"></i> Download PDF
+                    </button>
+                </div>
             </div>
         </div>
 
