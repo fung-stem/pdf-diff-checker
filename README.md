@@ -1,8 +1,10 @@
 # PDF Diff Checker
 
-Compare two PDF documents side by side in your browser. Upload an old version and a new version, see differences highlighted in **dark red** (deleted) and **dark blue** (added), and use a transparency slider to fade out identical content so changes stand out clearly.
+Two browser tools on one site: compare two PDFs, or split a booklet PDF into PNG pieces.
 
 **Privacy:** All processing happens in your browser. PDFs are never uploaded to any server.
+
+Open **PDF Split** from the title next to PDF Diff Checker, or go to `#split`.
 
 ---
 
@@ -17,21 +19,30 @@ Compare two PDF documents side by side in your browser. Upload an old version an
 - Export respects your opacity setting and re-renders at full quality (not upscaled from the preview)
 - Works on GitHub Pages — free public hosting, no backend required
 
+### PDF Split
+
+- Upload one booklet PDF and download a ZIP of PNGs
+- A tall sheet is cut into `top` and `bottom` (2 PNGs)
+- A wide sheet is cut into `top-left`, `bottom-left`, `top-right`, and `bottom-right` (4 PNGs)
+- Names follow the booklet order: `1-top.png`, then `2-3-top-left.png`, and a tall last sheet such as `66-top.png`
+- Choose 100, 150, or 300 DPI
+
 ---
 
 ## Project structure
 
 ```
 PDF_Diff/
-├── index.html      ← The website (main page)
-├── script.js       ← Comparison logic (runs in browser)
+├── index.html      ← The website (both tools)
+├── script.js       ← PDF comparison
+├── split.js        ← Booklet split into PNGs
 ├── README.md       ← This file
 ├── server.js       ← Optional: local testing only
 ├── package.json    ← Optional: local testing only
 └── .gitignore
 ```
 
-For **GitHub Pages**, only `index.html` and `script.js` are required. The rest is for local development and documentation.
+For **GitHub Pages**, `index.html`, `script.js`, and `split.js` are the site. The rest is for local development and documentation.
 
 ---
 
@@ -132,6 +143,13 @@ git push -u origin main
    - Lower = identical parts fade out (easier to spot changes)
    - 0% = only red/blue differences remain visible
 6. Click **Download PDF** to save the result. The download includes only the page pairs you selected.
+
+### PDF Split
+
+1. Click **PDF Split** in the header (or open `#split`).
+2. Upload one PDF.
+3. Choose **100**, **150**, or **300** DPI.
+4. Click **Split and download ZIP**. The file stays on your computer and the ZIP downloads when it is ready.
 
 ---
 

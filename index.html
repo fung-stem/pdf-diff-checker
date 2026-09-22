@@ -3,13 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PDF Diff Checker (Interactive)</title>
+    <title>PDF Diff Checker</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- PDF.js for rendering PDFs in the browser -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
     <!-- jsPDF for downloading the result -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <style>
         .drag-active {
             border-color: #3b82f6;
@@ -24,11 +25,14 @@
     <!-- Header -->
     <header class="bg-white shadow-sm py-4 sticky top-0 z-50">
         <div class="max-w-6xl mx-auto px-4 flex items-center justify-between">
-            <h1 class="text-2xl font-bold text-blue-600 flex items-center gap-2">
-                <i class="fa-solid fa-file-pdf"></i> PDF Diff Checker
-            </h1>
+            <nav class="flex items-center gap-5">
+                <a href="#diff" id="navDiff" class="text-lg sm:text-2xl font-bold text-blue-600 flex items-center gap-2">
+                    <i class="fa-solid fa-file-pdf"></i> PDF Diff Checker
+                </a>
+                <a href="#split" id="navSplit" class="text-lg sm:text-2xl font-bold text-gray-400 hover:text-blue-600">PDF Split</a>
+            </nav>
             <div class="flex items-center gap-4">
-                <a href="https://github.com" target="_blank" class="text-gray-500 hover:text-gray-900">
+                <a href="https://github.com/fung-stem/pdf-diff-checker" target="_blank" rel="noopener" class="text-gray-500 hover:text-gray-900" aria-label="GitHub repository">
                     <i class="fa-brands fa-github text-xl"></i>
                 </a>
             </div>
@@ -36,7 +40,7 @@
     </header>
 
     <!-- Main Content -->
-    <main class="flex-grow max-w-6xl mx-auto w-full px-4 py-8 flex flex-col items-center">
+    <main id="diffView" class="flex-grow max-w-6xl mx-auto w-full px-4 py-8 flex flex-col items-center">
         
         <!-- Upload Section -->
         <div id="uploadSection" class="bg-white p-8 rounded-xl shadow-md w-full max-w-4xl mb-8">
@@ -173,6 +177,58 @@
 
     </main>
 
+    <main id="splitView" class="hidden flex-grow max-w-6xl mx-auto w-full px-4 py-8 flex flex-col items-center">
+        <div class="bg-white p-8 rounded-xl shadow-md w-full max-w-3xl">
+            <div class="text-center mb-8">
+                <h2 class="text-3xl font-extrabold mb-2">Split a Booklet PDF into PNGs</h2>
+                <p class="text-gray-600">Each sheet is cut from its shape. A tall page becomes top and bottom. A wide spread becomes four parts: top-left, bottom-left, top-right, and bottom-right.</p>
+            </div>
+
+            <form id="splitForm" class="space-y-6">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">PDF</label>
+                    <div id="splitDropzone" class="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center cursor-pointer hover:bg-gray-50 transition-colors relative">
+                        <input type="file" id="splitPdf" accept=".pdf" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer" required>
+                        <div class="pointer-events-none">
+                            <i class="fa-solid fa-cloud-arrow-up text-3xl text-gray-400 mb-2"></i>
+                            <p class="text-sm text-gray-500" id="splitFilename">Drag & drop or click to browse</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="splitInfo" class="hidden border border-gray-200 rounded-lg p-4 bg-gray-50 space-y-3">
+                    <p id="splitPageCount" class="text-sm text-gray-700"></p>
+                    <div class="flex flex-col sm:flex-row sm:items-center gap-3">
+                        <label for="splitDpi" class="text-sm font-medium text-gray-700 whitespace-nowrap">PNG resolution:</label>
+                        <select id="splitDpi" class="text-sm border border-gray-300 rounded-lg px-3 py-2 bg-white text-gray-800">
+                            <option value="100">100 DPI — Fast</option>
+                            <option value="150" selected>150 DPI — Standard</option>
+                            <option value="300">300 DPI — Print (slower)</option>
+                        </select>
+                    </div>
+                    <p class="text-xs text-gray-500">Names follow the booklet. A tall first sheet is <span class="font-medium">1-top.png</span> and <span class="font-medium">1-bottom.png</span>. A wide sheet is <span class="font-medium">2-3-top-left.png</span> and the other three corners. A tall last sheet is a single number, such as <span class="font-medium">66-top.png</span>.</p>
+                </div>
+
+                <div id="splitError" class="hidden bg-red-50 text-red-600 p-3 rounded-md text-sm text-center"></div>
+
+                <button type="submit" id="splitBtn" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-4 rounded-lg transition-colors flex justify-center items-center gap-2">
+                    <i class="fa-solid fa-scissors"></i> Split and download ZIP
+                </button>
+            </form>
+
+            <div id="splitLoader" class="mt-8 text-center flex-col items-center hidden">
+                <div class="w-full max-w-md bg-gray-200 rounded-full h-2.5 mb-4">
+                    <div id="splitProgress" class="bg-blue-600 h-2.5 rounded-full transition-all duration-300 ease-out" style="width: 0%"></div>
+                </div>
+                <div class="flex items-center gap-3">
+                    <div class="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+                    <p id="splitStatus" class="text-gray-600 font-medium">Preparing...</p>
+                </div>
+            </div>
+        </div>
+    </main>
+
     <script src="script.js"></script>
+    <script src="split.js"></script>
 </body>
 </html>

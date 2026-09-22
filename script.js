@@ -4,6 +4,31 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs
 const DISPLAY_SCALE = 1.5; // Screen preview only (faster)
 
 document.addEventListener('DOMContentLoaded', () => {
+    const diffView = document.getElementById('diffView');
+    const splitView = document.getElementById('splitView');
+    const navDiff = document.getElementById('navDiff');
+    const navSplit = document.getElementById('navSplit');
+
+    function showView(name) {
+        const split = name === 'split';
+        diffView.classList.toggle('hidden', split);
+        splitView.classList.toggle('hidden', !split);
+        navDiff.className = split
+            ? 'text-lg sm:text-2xl font-bold text-gray-400 hover:text-blue-600 flex items-center gap-2'
+            : 'text-lg sm:text-2xl font-bold text-blue-600 flex items-center gap-2';
+        navSplit.className = split
+            ? 'text-lg sm:text-2xl font-bold text-blue-600'
+            : 'text-lg sm:text-2xl font-bold text-gray-400 hover:text-blue-600';
+        document.title = split ? 'PDF Split' : 'PDF Diff Checker';
+    }
+
+    function viewFromHash() {
+        showView(location.hash === '#split' ? 'split' : 'diff');
+    }
+
+    viewFromHash();
+    window.addEventListener('hashchange', viewFromHash);
+
     const form = document.getElementById('uploadForm');
     const pdf1Input = document.getElementById('pdf1');
     const pdf2Input = document.getElementById('pdf2');
