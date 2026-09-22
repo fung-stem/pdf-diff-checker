@@ -11,8 +11,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function showView(name) {
         const split = name === 'split';
-        diffView.classList.toggle('hidden', split);
-        splitView.classList.toggle('hidden', !split);
+        diffView.classList.toggle('is-hidden', split);
+        splitView.classList.toggle('is-hidden', !split);
         navDiff.className = split
             ? 'text-lg sm:text-2xl font-bold text-gray-400 hover:text-blue-600 flex items-center gap-2'
             : 'text-lg sm:text-2xl font-bold text-blue-600 flex items-center gap-2';
