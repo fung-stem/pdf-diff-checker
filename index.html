@@ -72,6 +72,33 @@
                     </div>
                 </div>
 
+                <!-- Page ranges (shown after both PDFs are chosen) -->
+                <div id="pageRangeSection" class="hidden border border-gray-200 rounded-lg p-4 bg-gray-50 space-y-3">
+                    <div>
+                        <p class="text-sm font-medium text-gray-800">Pages to compare</p>
+                        <p class="text-xs text-gray-500 mt-1">Pages are paired in order. Example: Old 2–5 with New 3–6 compares 2↔3, 3↔4, 4↔5, and 5↔6. Both ranges must include the same number of pages. Leave the full range to compare every page.</p>
+                    </div>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700">Old PDF <span id="pdf1PageCount" class="font-normal text-gray-500"></span></label>
+                            <div class="flex items-center gap-2 mt-2">
+                                <input type="number" id="pdf1From" min="1" value="1" required class="w-24 border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                                <span class="text-sm text-gray-500">to</span>
+                                <input type="number" id="pdf1To" min="1" value="1" required class="w-24 border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                            </div>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700">New PDF <span id="pdf2PageCount" class="font-normal text-gray-500"></span></label>
+                            <div class="flex items-center gap-2 mt-2">
+                                <input type="number" id="pdf2From" min="1" value="1" required class="w-24 border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                                <span class="text-sm text-gray-500">to</span>
+                                <input type="number" id="pdf2To" min="1" value="1" required class="w-24 border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                            </div>
+                        </div>
+                    </div>
+                    <p id="pageRangeSummary" class="text-sm text-gray-600"></p>
+                </div>
+
                 <!-- Error Message -->
                 <div id="errorMessage" class="hidden bg-red-50 text-red-600 p-3 rounded-md text-sm text-center"></div>
 

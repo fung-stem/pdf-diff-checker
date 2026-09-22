@@ -21,10 +21,19 @@ document.addEventListener('DOMContentLoaded', () => {
     const opacityValue = document.getElementById('opacityValue');
     const exportDpi = document.getElementById('exportDpi');
     const downloadBtn = document.getElementById('downloadBtn');
+    const pageRangeSection = document.getElementById('pageRangeSection');
+    const pdf1From = document.getElementById('pdf1From');
+    const pdf1To = document.getElementById('pdf1To');
+    const pdf2From = document.getElementById('pdf2From');
+    const pdf2To = document.getElementById('pdf2To');
+    const pdf1PageCount = document.getElementById('pdf1PageCount');
+    const pdf2PageCount = document.getElementById('pdf2PageCount');
+    const pageRangeSummary = document.getElementById('pageRangeSummary');
 
-    let pdfDoc1 = null;
-    let pdfDoc2 = null;
-    let numPages = 0;
+    let loaded1 = null;
+    let loaded2 = null;
+    let pagePairs = [];
+    const loadToken = { 1: 0, 2: 0 };
 
     const readFileAsArrayBuffer = (file) => {
         return new Promise((resolve, reject) => {
@@ -36,7 +45,7 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     const renderPageToCanvas = async (pdf, pageNum, scale) => {
-        if (pageNum > pdf.numPages) return null;
+        if (!pdf || pageNum < 1 || pageNum > pdf.numPages) return null;
         const page = await pdf.getPage(pageNum);
         const viewport = page.getViewport({ scale });
 
@@ -95,17 +104,100 @@ document.addEventListener('DOMContentLoaded', () => {
         return { identicalCanvas, diffCanvas, width, height };
     };
 
-    const comparePageAtScale = async (pdf1, pdf2, pageNum, scale) => {
-        const page1 = await renderPageToCanvas(pdf1, pageNum, scale);
-        const page2 = await renderPageToCanvas(pdf2, pageNum, scale);
+    const pixelsOnCanvas = (rendered, width, height) => {
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = 'white';
+        ctx.fillRect(0, 0, width, height);
+        if (rendered) ctx.drawImage(rendered.canvas, 0, 0);
+        return ctx.getImageData(0, 0, width, height).data;
+    };
 
-        const width = page1 ? page1.width : page2.width;
-        const height = page1 ? page1.height : page2.height;
-        const blankData = new Uint8ClampedArray(width * height * 4).fill(255);
-        const pixels1 = page1 ? page1.ctx.getImageData(0, 0, width, height).data : blankData;
-        const pixels2 = page2 ? page2.ctx.getImageData(0, 0, width, height).data : blankData;
+    const comparePagesAtScale = async (pdf1, pdf2, pageNum1, pageNum2, scale) => {
+        const page1 = await renderPageToCanvas(pdf1, pageNum1, scale);
+        const page2 = await renderPageToCanvas(pdf2, pageNum2, scale);
+
+        const width = Math.max(page1 ? page1.width : 0, page2 ? page2.width : 0);
+        const height = Math.max(page1 ? page1.height : 0, page2 ? page2.height : 0);
+        const pixels1 = pixelsOnCanvas(page1, width, height);
+        const pixels2 = pixelsOnCanvas(page2, width, height);
 
         return buildDiffLayers(pixels1, pixels2, width, height);
+    };
+
+    const readRange = (fromEl, toEl, maxPages, label) => {
+        const from = parseInt(fromEl.value, 10);
+        const to = parseInt(toEl.value, 10);
+        if (!Number.isInteger(from) || !Number.isInteger(to)) {
+            throw new Error(`${label}: enter a start and end page.`);
+        }
+        if (from < 1 || to > maxPages || from > to) {
+            throw new Error(`${label}: use pages from 1 to ${maxPages}, with start less than or equal to end.`);
+        }
+        return { from, to, length: to - from + 1 };
+    };
+
+    const buildPagePairs = () => {
+        const oldRange = readRange(pdf1From, pdf1To, loaded1.doc.numPages, 'Old PDF');
+        const newRange = readRange(pdf2From, pdf2To, loaded2.doc.numPages, 'New PDF');
+        if (oldRange.length !== newRange.length) {
+            throw new Error(`Both ranges must cover the same number of pages. Old has ${oldRange.length}, new has ${newRange.length}.`);
+        }
+        const pairs = [];
+        for (let i = 0; i < oldRange.length; i++) {
+            pairs.push({
+                oldPage: oldRange.from + i,
+                newPage: newRange.from + i
+            });
+        }
+        return pairs;
+    };
+
+    const updatePageRangeSummary = () => {
+        if (!loaded1 || !loaded2) return;
+        try {
+            const pairs = buildPagePairs();
+            const first = pairs[0];
+            const last = pairs[pairs.length - 1];
+            const mapping = pairs.length === 1
+                ? `Old page ${first.oldPage} with new page ${first.newPage}`
+                : `Old ${first.oldPage}–${last.oldPage} with new ${first.newPage}–${last.newPage} (${pairs.length} pages)`;
+            pageRangeSummary.textContent = `Will compare ${mapping}.`;
+            pageRangeSummary.className = 'text-sm text-gray-600';
+        } catch (err) {
+            pageRangeSummary.textContent = err.message;
+            pageRangeSummary.className = 'text-sm text-red-600';
+        }
+    };
+
+    const setRangeInputs = (fromEl, toEl, pages) => {
+        fromEl.min = 1;
+        fromEl.max = pages;
+        toEl.min = 1;
+        toEl.max = pages;
+        fromEl.value = 1;
+        toEl.value = pages;
+    };
+
+    const refreshPageRangeUI = () => {
+        if (!loaded1 || !loaded2) {
+            pageRangeSection.classList.add('hidden');
+            return;
+        }
+        pdf1PageCount.textContent = `(${loaded1.doc.numPages} pages)`;
+        pdf2PageCount.textContent = `(${loaded2.doc.numPages} pages)`;
+        pageRangeSection.classList.remove('hidden');
+        updatePageRangeSummary();
+    };
+
+    const loadSelectedPdf = async (input) => {
+        const file = input.files[0];
+        if (!file) return null;
+        const data = await readFileAsArrayBuffer(file);
+        const doc = await pdfjsLib.getDocument({ data }).promise;
+        return { file, doc };
     };
 
     const mergeLayersToCanvas = (identicalCanvas, diffCanvas, width, height, opacity) => {
@@ -123,8 +215,42 @@ document.addEventListener('DOMContentLoaded', () => {
         return tempCanvas;
     };
 
-    pdf1Input.addEventListener('change', (e) => updateFilename(e.target, filename1));
-    pdf2Input.addEventListener('change', (e) => updateFilename(e.target, filename2));
+    pdf1Input.addEventListener('change', () => onPdfChosen(pdf1Input, filename1, 1));
+    pdf2Input.addEventListener('change', () => onPdfChosen(pdf2Input, filename2, 2));
+
+    async function onPdfChosen(input, filenameEl, which) {
+        const token = ++loadToken[which];
+        updateFilename(input, filenameEl);
+        hideError();
+        if (!input.files[0]) {
+            if (which === 1) loaded1 = null;
+            else loaded2 = null;
+            refreshPageRangeUI();
+            return;
+        }
+        try {
+            const loaded = await loadSelectedPdf(input);
+            if (token !== loadToken[which]) return;
+            if (which === 1) {
+                loaded1 = loaded;
+                setRangeInputs(pdf1From, pdf1To, loaded.doc.numPages);
+            } else {
+                loaded2 = loaded;
+                setRangeInputs(pdf2From, pdf2To, loaded.doc.numPages);
+            }
+            refreshPageRangeUI();
+        } catch (err) {
+            console.error(err);
+            if (which === 1) loaded1 = null;
+            else loaded2 = null;
+            refreshPageRangeUI();
+            showError('Could not read that PDF. It might be corrupted or password protected.');
+        }
+    }
+
+    [pdf1From, pdf1To, pdf2From, pdf2To].forEach((input) => {
+        input.addEventListener('input', updatePageRangeSummary);
+    });
 
     function updateFilename(input, displayElement) {
         if (input.files.length > 0) {
@@ -141,14 +267,21 @@ document.addEventListener('DOMContentLoaded', () => {
     form.addEventListener('submit', async (e) => {
         e.preventDefault();
 
-        errorMessage.classList.add('hidden');
+        hideError();
         controlsSection.classList.add('hidden');
         pagesContainer.innerHTML = '';
-        pdfDoc1 = null;
-        pdfDoc2 = null;
+        pagePairs = [];
 
-        if (!pdf1Input.files[0] || !pdf2Input.files[0]) {
+        if (!loaded1 || !loaded2) {
             showError('Please select both PDF files.');
+            return;
+        }
+
+        let pairs;
+        try {
+            pairs = buildPagePairs();
+        } catch (err) {
+            showError(err.message);
             return;
         }
 
@@ -156,22 +289,18 @@ document.addEventListener('DOMContentLoaded', () => {
         submitBtn.classList.add('opacity-50', 'cursor-not-allowed');
         loader.style.display = 'flex';
         progressBar.style.width = '0%';
-        loadingText.textContent = 'Loading PDFs...';
+        loadingText.textContent = 'Comparing selected pages...';
 
         try {
-            const data1 = await readFileAsArrayBuffer(pdf1Input.files[0]);
-            const data2 = await readFileAsArrayBuffer(pdf2Input.files[0]);
+            pagePairs = pairs;
 
-            pdfDoc1 = await pdfjsLib.getDocument({ data: data1 }).promise;
-            pdfDoc2 = await pdfjsLib.getDocument({ data: data2 }).promise;
-            numPages = Math.max(pdfDoc1.numPages, pdfDoc2.numPages);
-
-            for (let i = 1; i <= numPages; i++) {
-                loadingText.textContent = `Comparing page ${i} of ${numPages}...`;
-                progressBar.style.width = `${(i / numPages) * 100}%`;
+            for (let i = 0; i < pagePairs.length; i++) {
+                const pair = pagePairs[i];
+                loadingText.textContent = `Comparing old page ${pair.oldPage} with new page ${pair.newPage} (${i + 1} of ${pagePairs.length})...`;
+                progressBar.style.width = `${((i + 1) / pagePairs.length) * 100}%`;
 
                 const { identicalCanvas, diffCanvas, width, height } =
-                    await comparePageAtScale(pdfDoc1, pdfDoc2, i, DISPLAY_SCALE);
+                    await comparePagesAtScale(loaded1.doc, loaded2.doc, pair.oldPage, pair.newPage, DISPLAY_SCALE);
 
                 identicalCanvas.className = 'identical-layer absolute top-0 left-0 w-full h-full object-contain transition-opacity duration-200';
                 diffCanvas.className = 'diff-layer absolute top-0 left-0 w-full h-full object-contain pointer-events-none';
@@ -182,8 +311,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 pageContainer.style.aspectRatio = `${width} / ${height}`;
 
                 const pageBadge = document.createElement('div');
-                pageBadge.className = 'absolute -left-12 top-4 bg-gray-800 text-white font-bold py-1 px-3 rounded-l-lg shadow-md z-10';
-                pageBadge.textContent = `Pg ${i}`;
+                pageBadge.className = 'absolute top-3 left-3 bg-gray-800 text-white text-sm font-bold py-1 px-3 rounded-lg shadow-md z-10';
+                pageBadge.textContent = `Old p.${pair.oldPage} ↔ New p.${pair.newPage}`;
 
                 pageContainer.appendChild(pageBadge);
                 pageContainer.appendChild(identicalCanvas);
@@ -213,7 +342,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     downloadBtn.addEventListener('click', async () => {
-        if (!pdfDoc1 || !pdfDoc2 || numPages === 0) return;
+        if (!loaded1 || !loaded2 || pagePairs.length === 0) return;
 
         const dpi = parseInt(exportDpi.value, 10);
         const exportScale = dpi / 72;
@@ -230,17 +359,18 @@ document.addEventListener('DOMContentLoaded', () => {
             let pdf = null;
 
             loader.style.display = 'flex';
-            for (let i = 1; i <= numPages; i++) {
-                loadingText.textContent = `Exporting page ${i} of ${numPages} at ${dpi} DPI...`;
-                progressBar.style.width = `${(i / numPages) * 100}%`;
+            for (let i = 0; i < pagePairs.length; i++) {
+                const pair = pagePairs[i];
+                loadingText.textContent = `Exporting old p.${pair.oldPage} ↔ new p.${pair.newPage} (${i + 1} of ${pagePairs.length}) at ${dpi} DPI...`;
+                progressBar.style.width = `${((i + 1) / pagePairs.length) * 100}%`;
 
                 const { identicalCanvas, diffCanvas, width, height } =
-                    await comparePageAtScale(pdfDoc1, pdfDoc2, i, exportScale);
+                    await comparePagesAtScale(loaded1.doc, loaded2.doc, pair.oldPage, pair.newPage, exportScale);
 
                 const merged = mergeLayersToCanvas(identicalCanvas, diffCanvas, width, height, currentOpacity);
                 const imgData = merged.toDataURL('image/jpeg', jpegQuality);
 
-                if (i === 1) {
+                if (i === 0) {
                     pdf = new jsPDF({
                         orientation: width > height ? 'l' : 'p',
                         unit: 'px',
@@ -269,6 +399,11 @@ document.addEventListener('DOMContentLoaded', () => {
     function showError(message) {
         errorMessage.textContent = message;
         errorMessage.classList.remove('hidden');
+    }
+
+    function hideError() {
+        errorMessage.textContent = '';
+        errorMessage.classList.add('hidden');
     }
 
     const dropzones = [

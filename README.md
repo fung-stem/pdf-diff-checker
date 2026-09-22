@@ -9,6 +9,7 @@ Compare two PDF documents side by side in your browser. Upload an old version an
 ## Features
 
 - Drag-and-drop upload for two PDF files
+- Choose which pages to compare (for example, old pages 2–5 against new pages 3–6)
 - Page-by-page visual comparison
 - **Deleted text** shown in dark red, **added text** in dark blue
 - **Identical Text Opacity** slider (0% = invisible, 100% = fully visible)
@@ -125,11 +126,12 @@ git push -u origin main
 
 1. Open the site (locally or on GitHub Pages)
 2. Upload **Old PDF (Base)** and **New PDF (Modified)**
-3. Click **Compare PDFs**
-4. Use the **Identical Text Opacity** slider:
+3. Set the page ranges. Pages are paired in order: old 2–5 with new 3–6 compares 2↔3, 3↔4, 4↔5, and 5↔6. Both ranges must contain the same number of pages. Leave the defaults to compare every page.
+4. Click **Compare PDFs**
+5. Use the **Identical Text Opacity** slider:
    - Lower = identical parts fade out (easier to spot changes)
    - 0% = only red/blue differences remain visible
-5. Click **Download PDF** to save the result
+6. Click **Download PDF** to save the result. The download includes only the page pairs you selected.
 
 ---
 
