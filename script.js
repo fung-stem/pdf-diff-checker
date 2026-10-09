@@ -2,65 +2,6 @@
 pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
 const DISPLAY_SCALE = 1.5; // Screen preview only (faster)
-const FULL_TRIM = { l: 0, t: 0, r: 1, b: 1 };
-
-function contentBox(data, width, height) {
-    const col = new Uint32Array(width);
-    const row = new Uint32Array(height);
-    for (let y = 0; y < height; y++) {
-        for (let x = 0; x < width; x++) {
-            const i = (y * width + x) * 4;
-            const r = data[i];
-            const g = data[i + 1];
-            const b = data[i + 2];
-            const min = Math.min(r, g, b);
-            const max = Math.max(r, g, b);
-            if (min < 248 || max - min > 12) {
-                col[x] += 1;
-                row[y] += 1;
-            }
-        }
-    }
-    const minX = Math.max(4, Math.round(height * 0.015));
-    const minY = Math.max(4, Math.round(width * 0.015));
-    let left = -1;
-    let right = -1;
-    let top = -1;
-    let bottom = -1;
-    for (let x = 0; x < width; x++) {
-        if (col[x] >= minX) {
-            if (left < 0) left = x;
-            right = x;
-        }
-    }
-    for (let y = 0; y < height; y++) {
-        if (row[y] >= minY) {
-            if (top < 0) top = y;
-            bottom = y;
-        }
-    }
-    if (left < 0) return null;
-    return { l: left, t: top, r: right, b: bottom };
-}
-
-function selfCheckContentBox() {
-    const width = 40;
-    const height = 40;
-    const data = new Uint8ClampedArray(width * height * 4).fill(255);
-    for (let y = 8; y <= 31; y++) {
-        for (let x = 8; x <= 31; x++) {
-            const i = (y * width + x) * 4;
-            data[i] = data[i + 1] = data[i + 2] = 0;
-        }
-    }
-    data[0] = data[1] = data[2] = 0;
-    const box = contentBox(data, width, height);
-    if (!box || box.l !== 8 || box.t !== 8 || box.r !== 31 || box.b !== 31) {
-        throw new Error('content box ' + JSON.stringify(box));
-    }
-}
-
-selfCheckContentBox();
 
 document.addEventListener('DOMContentLoaded', () => {
     const diffView = document.getElementById('diffView');
@@ -120,9 +61,6 @@ document.addEventListener('DOMContentLoaded', () => {
     let loaded1 = null;
     let loaded2 = null;
     let pagePairs = [];
-    let trim1 = FULL_TRIM;
-    let trim2 = FULL_TRIM;
-    const trimMargins = document.getElementById('trimMargins');
     const loadToken = { 1: 0, 2: 0 };
 
     const readFileAsArrayBuffer = (file) => {
@@ -205,67 +143,14 @@ document.addEventListener('DOMContentLoaded', () => {
         return ctx.getImageData(0, 0, width, height).data;
     };
 
-    const paintFitted = (rendered, trim, width, height) => {
-        const canvas = document.createElement('canvas');
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext('2d');
-        ctx.fillStyle = 'white';
-        ctx.fillRect(0, 0, width, height);
-        if (!rendered) return ctx.getImageData(0, 0, width, height).data;
-        const sx = Math.round(trim.l * rendered.width);
-        const sy = Math.round(trim.t * rendered.height);
-        const sw = Math.max(1, Math.round((trim.r - trim.l) * rendered.width));
-        const sh = Math.max(1, Math.round((trim.b - trim.t) * rendered.height));
-        ctx.drawImage(rendered.canvas, sx, sy, sw, sh, 0, 0, width, height);
-        return ctx.getImageData(0, 0, width, height).data;
-    };
-
-    const comparePagesAtScale = async (pdf1, pdf2, pageNum1, pageNum2, scale, trim1, trim2) => {
+    const comparePagesAtScale = async (pdf1, pdf2, pageNum1, pageNum2, scale) => {
         const page1 = await renderPageToCanvas(pdf1, pageNum1, scale);
         const page2 = await renderPageToCanvas(pdf2, pageNum2, scale);
-        const crop = (rendered, trim) => {
-            if (!rendered) return { w: 1, h: 1 };
-            return {
-                w: Math.max(1, Math.round((trim.r - trim.l) * rendered.width)),
-                h: Math.max(1, Math.round((trim.b - trim.t) * rendered.height))
-            };
-        };
-        const size1 = crop(page1, trim1);
-        const size2 = crop(page2, trim2);
-        const width = Math.max(size1.w, size2.w);
-        const height = Math.max(size1.h, size2.h);
-        const pixels1 = paintFitted(page1, trim1, width, height);
-        const pixels2 = paintFitted(page2, trim2, width, height);
+        const width = Math.max(page1 ? page1.width : 1, page2 ? page2.width : 1);
+        const height = Math.max(page1 ? page1.height : 1, page2 ? page2.height : 1);
+        const pixels1 = pixelsOnCanvas(page1, width, height);
+        const pixels2 = pixelsOnCanvas(page2, width, height);
         return buildDiffLayers(pixels1, pixels2, width, height);
-    };
-
-    const detectTrim = async (pdf, pageNumbers) => {
-        let left = 1;
-        let top = 1;
-        let right = 0;
-        let bottom = 0;
-        let found = false;
-        for (let i = 0; i < pageNumbers.length; i++) {
-            loadingText.textContent = `Finding the content edge, page ${pageNumbers[i]} (${i + 1} of ${pageNumbers.length})...`;
-            progressBar.style.width = `${((i + 1) / pageNumbers.length) * 100}%`;
-            const rendered = await renderPageToCanvas(pdf, pageNumbers[i], 0.45);
-            if (rendered) {
-                const box = contentBox(rendered.ctx.getImageData(0, 0, rendered.width, rendered.height).data, rendered.width, rendered.height);
-                rendered.canvas.width = 0;
-                rendered.canvas.height = 0;
-                if (box) {
-                    found = true;
-                    left = Math.min(left, box.l / rendered.width);
-                    top = Math.min(top, box.t / rendered.height);
-                    right = Math.max(right, (box.r + 1) / rendered.width);
-                    bottom = Math.max(bottom, (box.b + 1) / rendered.height);
-                }
-            }
-            await new Promise((resolve) => setTimeout(resolve, 0));
-        }
-        if (!found || right <= left || bottom <= top) return FULL_TRIM;
-        return { l: left, t: top, r: right, b: bottom };
     };
 
     const readRange = (fromEl, toEl, maxPages, label) => {
@@ -434,14 +319,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
         try {
             pagePairs = pairs;
-            trim1 = FULL_TRIM;
-            trim2 = FULL_TRIM;
-            if (trimMargins.checked) {
-                const oldPages = [...new Set(pairs.map((pair) => pair.oldPage))];
-                const newPages = [...new Set(pairs.map((pair) => pair.newPage))];
-                trim1 = await detectTrim(loaded1.doc, oldPages);
-                trim2 = await detectTrim(loaded2.doc, newPages);
-            }
 
             for (let i = 0; i < pagePairs.length; i++) {
                 const pair = pagePairs[i];
@@ -449,7 +326,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 progressBar.style.width = `${((i + 1) / pagePairs.length) * 100}%`;
 
                 const { identicalCanvas, diffCanvas, width, height } =
-                    await comparePagesAtScale(loaded1.doc, loaded2.doc, pair.oldPage, pair.newPage, DISPLAY_SCALE, trim1, trim2);
+                    await comparePagesAtScale(loaded1.doc, loaded2.doc, pair.oldPage, pair.newPage, DISPLAY_SCALE);
 
                 identicalCanvas.className = 'identical-layer absolute top-0 left-0 w-full h-full object-contain transition-opacity duration-200';
                 diffCanvas.className = 'diff-layer absolute top-0 left-0 w-full h-full object-contain pointer-events-none';
@@ -514,7 +391,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 progressBar.style.width = `${((i + 1) / pagePairs.length) * 100}%`;
 
                 const { identicalCanvas, diffCanvas, width, height } =
-                    await comparePagesAtScale(loaded1.doc, loaded2.doc, pair.oldPage, pair.newPage, exportScale, trim1, trim2);
+                    await comparePagesAtScale(loaded1.doc, loaded2.doc, pair.oldPage, pair.newPage, exportScale);
 
                 const merged = mergeLayersToCanvas(identicalCanvas, diffCanvas, width, height, currentOpacity);
                 const imgData = merged.toDataURL('image/jpeg', jpegQuality);

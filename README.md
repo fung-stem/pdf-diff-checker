@@ -12,7 +12,6 @@ Open **PDF Split** or **PDF Trim** from the titles next to PDF Diff Checker.
 
 - Drag-and-drop upload for two PDF files
 - Choose which pages to compare (for example, old pages 2–5 against new pages 3–6)
-- Trim each PDF’s white edge, then scale both pages to the same size so the main content lines up
 - Page-by-page visual comparison
 - **Deleted text** shown in dark red, **added text** in dark blue
 - **Identical Text Opacity** slider (0% = invisible, 100% = fully visible)
@@ -30,10 +29,11 @@ Open **PDF Split** or **PDF Trim** from the titles next to PDF Diff Checker.
 
 ### PDF Trim
 
+- A separate page from PDF Diff Checker
 - Upload two PDFs and cut only the white edge
-- Pages are not scaled or stretched
+- Pages are not scaled or stretched, and nothing is compared
 - If the trimmed page sizes still differ, the page shows a log that the two trimmed PDFs are different in size
-- Download both trimmed PDFs, then compare them with PDF Diff Checker
+- Download the two trimmed PDFs separately
 
 ---
 
@@ -166,7 +166,7 @@ git push -u origin main
 2. Upload two PDFs.
 3. Click **Trim both PDFs**.
 4. Read the log. It shows how much white edge was cut and whether the two trimmed PDFs are the same size.
-5. Download each trimmed PDF, then open **PDF Diff Checker** and compare those files.
+5. Download each trimmed PDF. Comparing those files is a separate step in **PDF Diff Checker**.
 
 ---
 

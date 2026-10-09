@@ -104,10 +104,6 @@
                         </div>
                     </div>
                     <p id="pageRangeSummary" class="text-sm text-gray-600"></p>
-                    <label class="flex items-start gap-2 text-sm text-gray-700">
-                        <input type="checkbox" id="trimMargins" checked class="mt-1">
-                        <span>Trim the white edge, then make both pages the same size so the content lines up.</span>
-                    </label>
                 </div>
 
                 <!-- Error Message -->
@@ -239,7 +235,7 @@
         <div class="bg-white p-8 rounded-xl shadow-md w-full max-w-3xl">
             <div class="text-center mb-8">
                 <h2 class="text-3xl font-extrabold mb-2">Trim Two PDFs</h2>
-                <p class="text-gray-600">Cut the white edge off each PDF. The content is not scaled or stretched. Download both files, then compare them with PDF Diff Checker.</p>
+                <p class="text-gray-600">Upload two PDFs, cut the white edge, and download each trimmed file. This does not compare them, and it does not scale or stretch the pages.</p>
             </div>
 
             <form id="trimForm" class="space-y-6">
@@ -297,8 +293,8 @@
         </div>
     </main>
 
-    <script src="script.js"></script>
-    <script src="split.js"></script>
-    <script src="trim.js"></script>
+    <script src="script.js?v=3"></script>
+    <script src="split.js?v=3"></script>
+    <script src="trim.js?v=3"></script>
 </body>
 </html>

@@ -1,5 +1,44 @@
 const TRIM_SCALE = 0.5;
 
+function contentBox(data, width, height) {
+    const col = new Uint32Array(width);
+    const row = new Uint32Array(height);
+    for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+            const i = (y * width + x) * 4;
+            const r = data[i];
+            const g = data[i + 1];
+            const b = data[i + 2];
+            const min = Math.min(r, g, b);
+            const max = Math.max(r, g, b);
+            if (min < 248 || max - min > 12) {
+                col[x] += 1;
+                row[y] += 1;
+            }
+        }
+    }
+    const minX = Math.max(4, Math.round(height * 0.015));
+    const minY = Math.max(4, Math.round(width * 0.015));
+    let left = -1;
+    let right = -1;
+    let top = -1;
+    let bottom = -1;
+    for (let x = 0; x < width; x++) {
+        if (col[x] >= minX) {
+            if (left < 0) left = x;
+            right = x;
+        }
+    }
+    for (let y = 0; y < height; y++) {
+        if (row[y] >= minY) {
+            if (top < 0) top = y;
+            bottom = y;
+        }
+    }
+    if (left < 0) return null;
+    return { l: left, t: top, r: right, b: bottom };
+}
+
 function cropRect(box, rotation, margins) {
     const { left, right, top, bottom } = margins;
     let { x, y, width, height } = box;
@@ -106,6 +145,20 @@ function selfCheckTrim() {
     }
     if (sizesMatch([{ width: 629.3, height: 803.2 }], [{ width: 613.0, height: 802.9 }])) {
         throw new Error('expected different sizes');
+    }
+    const width = 40;
+    const height = 40;
+    const data = new Uint8ClampedArray(width * height * 4).fill(255);
+    for (let y = 8; y <= 31; y++) {
+        for (let x = 8; x <= 31; x++) {
+            const i = (y * width + x) * 4;
+            data[i] = data[i + 1] = data[i + 2] = 0;
+        }
+    }
+    data[0] = data[1] = data[2] = 0;
+    const box = contentBox(data, width, height);
+    if (!box || box.l !== 8 || box.t !== 8 || box.r !== 31 || box.b !== 31) {
+        throw new Error('content box ' + JSON.stringify(box));
     }
 }
 
