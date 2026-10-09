@@ -30,7 +30,8 @@ Open **PDF Split** or **PDF Trim** from the titles next to PDF Diff Checker.
 ### PDF Trim
 
 - A separate page from PDF Diff Checker
-- Upload two PDFs and cut only the white edge
+- For each PDF, type a reference page. That page’s white edge is cut from every page
+- Thin corner lines in the margin are ignored
 - Pages are not scaled or stretched, and nothing is compared
 - If the trimmed page sizes still differ, the page shows a log that the two trimmed PDFs are different in size
 - Download the two trimmed PDFs separately
@@ -164,9 +165,10 @@ git push -u origin main
 
 1. Click **PDF Trim** in the header (or open `#trim`).
 2. Upload two PDFs.
-3. Click **Trim both PDFs**.
-4. Read the log. It shows how much white edge was cut and whether the two trimmed PDFs are the same size.
-5. Download each trimmed PDF. Comparing those files is a separate step in **PDF Diff Checker**.
+3. For each PDF, type the reference page that shows the real white edge.
+4. Click **Trim both PDFs**.
+5. Read the log. It shows the reference page, how much was cut, and whether the two trimmed PDFs are the same size.
+6. Download each trimmed PDF. Comparing those files is a separate step in **PDF Diff Checker**.
 
 ---
 

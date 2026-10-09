@@ -1,6 +1,46 @@
-const TRIM_SCALE = 0.5;
+const TRIM_SCALE = 1;
 
-function contentBox(data, width, height) {
+function contentSpan(counts, minInk, mergeGap, noiseWidth, noiseGap) {
+    const runs = [];
+    const n = counts.length;
+    let i = 0;
+    while (i < n) {
+        while (i < n && counts[i] < minInk) i++;
+        if (i >= n) break;
+        const start = i;
+        let end = i;
+        i++;
+        while (i < n) {
+            if (counts[i] >= minInk) {
+                end = i;
+                i++;
+                continue;
+            }
+            let gap = 0;
+            while (i + gap < n && counts[i + gap] < minInk) gap++;
+            if (i + gap < n && gap <= mergeGap) {
+                i += gap;
+                continue;
+            }
+            break;
+        }
+        runs.push({ start, end });
+    }
+    while (runs.length > 1 && runs[0].end - runs[0].start + 1 <= noiseWidth && runs[1].start - runs[0].end - 1 >= noiseGap) {
+        runs.shift();
+    }
+    while (runs.length > 1) {
+        const last = runs.length - 1;
+        const width = runs[last].end - runs[last].start + 1;
+        const gap = runs[last].start - runs[last - 1].end - 1;
+        if (width <= noiseWidth && gap >= noiseGap) runs.pop();
+        else break;
+    }
+    if (!runs.length) return null;
+    return { start: runs[0].start, end: runs[runs.length - 1].end };
+}
+
+function mainContentBox(data, width, height, scale) {
     const col = new Uint32Array(width);
     const row = new Uint32Array(height);
     for (let y = 0; y < height; y++) {
@@ -17,26 +57,11 @@ function contentBox(data, width, height) {
             }
         }
     }
-    const minX = Math.max(4, Math.round(height * 0.015));
-    const minY = Math.max(4, Math.round(width * 0.015));
-    let left = -1;
-    let right = -1;
-    let top = -1;
-    let bottom = -1;
-    for (let x = 0; x < width; x++) {
-        if (col[x] >= minX) {
-            if (left < 0) left = x;
-            right = x;
-        }
-    }
-    for (let y = 0; y < height; y++) {
-        if (row[y] >= minY) {
-            if (top < 0) top = y;
-            bottom = y;
-        }
-    }
-    if (left < 0) return null;
-    return { l: left, t: top, r: right, b: bottom };
+    const pt = (points) => Math.max(1, Math.round(points * scale));
+    const xSpan = contentSpan(col, Math.max(4, Math.round(height * 0.015)), pt(4), pt(8), pt(3));
+    const ySpan = contentSpan(row, Math.max(4, Math.round(width * 0.015)), pt(4), pt(8), pt(3));
+    if (!xSpan || !ySpan) return null;
+    return { l: xSpan.start, t: ySpan.start, r: xSpan.end, b: ySpan.end };
 }
 
 function cropRect(box, rotation, margins) {
@@ -156,7 +181,11 @@ function selfCheckTrim() {
         }
     }
     data[0] = data[1] = data[2] = 0;
-    const box = contentBox(data, width, height);
+    for (let y = 0; y <= 6; y++) {
+        const i = (y * width + 1) * 4;
+        data[i] = data[i + 1] = data[i + 2] = 0;
+    }
+    const box = mainContentBox(data, width, height, 1);
     if (!box || box.l !== 8 || box.t !== 8 || box.r !== 31 || box.b !== 31) {
         throw new Error('content box ' + JSON.stringify(box));
     }
@@ -178,8 +207,11 @@ if (typeof document !== 'undefined') {
         const result = document.getElementById('trimResult');
         const log = document.getElementById('trimLog');
         const downloads = [document.getElementById('trimDownload1'), document.getElementById('trimDownload2')];
+        const refInputs = [document.getElementById('trimRef1'), document.getElementById('trimRef2')];
+        const refCounts = [document.getElementById('trimRefCount1'), document.getElementById('trimRefCount2')];
 
         let ready = [null, null];
+        const countToken = [0, 0];
 
         function showError(message) {
             errorBox.textContent = message;
@@ -197,6 +229,7 @@ if (typeof document !== 'undefined') {
                 result.classList.add('hidden');
                 ready[index] = null;
                 const file = inputs[index].files[0];
+                refCounts[index].textContent = '';
                 if (!file) {
                     names[index].textContent = 'Drag & drop or click to browse';
                     names[index].classList.remove('text-blue-600', 'font-medium');
@@ -206,6 +239,23 @@ if (typeof document !== 'undefined') {
                 names[index].textContent = file.name;
                 names[index].classList.add('text-blue-600', 'font-medium');
                 names[index].classList.remove('text-gray-500');
+                const token = ++countToken[index];
+                refCounts[index].textContent = 'Reading page count...';
+                file.arrayBuffer().then((data) => pdfjsLib.getDocument({ data }).promise).then(async (pdf) => {
+                    if (token !== countToken[index]) {
+                        await pdf.destroy();
+                        return;
+                    }
+                    refInputs[index].max = pdf.numPages;
+                    refInputs[index].value = '1';
+                    refCounts[index].textContent = `of ${pdf.numPages}`;
+                    await pdf.destroy();
+                }).catch((err) => {
+                    console.error(err);
+                    if (token !== countToken[index]) return;
+                    refCounts[index].textContent = '';
+                    showError('Could not read that PDF. It might be corrupted or password protected.');
+                });
             });
 
             const zone = zones[index];
@@ -248,34 +298,32 @@ if (typeof document !== 'undefined') {
         bindFile(0);
         bindFile(1);
 
-        async function measureMargins(file, onPage) {
+        async function measureReference(file, pageNumber) {
             const pdf = await pdfjsLib.getDocument({ data: await file.arrayBuffer() }).promise;
-            const found = [];
             const canvas = document.createElement('canvas');
             const ctx = canvas.getContext('2d', { willReadFrequently: true });
             try {
-                for (let i = 1; i <= pdf.numPages; i++) {
-                    onPage(i, pdf.numPages);
-                    const page = await pdf.getPage(i);
-                    const viewport = page.getViewport({ scale: TRIM_SCALE });
-                    const width = Math.floor(viewport.width);
-                    const height = Math.floor(viewport.height);
-                    canvas.width = width;
-                    canvas.height = height;
-                    ctx.fillStyle = '#ffffff';
-                    ctx.fillRect(0, 0, width, height);
-                    await page.render({ canvasContext: ctx, viewport }).promise;
-                    const box = contentBox(ctx.getImageData(0, 0, width, height).data, width, height);
-                    if (box) found.push(marginsFromBox(box, width, height, TRIM_SCALE));
-                    canvas.width = 0;
-                    canvas.height = 0;
-                    page.cleanup();
-                    await new Promise((resolve) => setTimeout(resolve, 0));
+                if (!Number.isInteger(pageNumber) || pageNumber < 1 || pageNumber > pdf.numPages) {
+                    throw new Error(`Reference page must be from 1 to ${pdf.numPages}.`);
                 }
+                const page = await pdf.getPage(pageNumber);
+                const viewport = page.getViewport({ scale: TRIM_SCALE });
+                const width = Math.floor(viewport.width);
+                const height = Math.floor(viewport.height);
+                canvas.width = width;
+                canvas.height = height;
+                ctx.fillStyle = '#ffffff';
+                ctx.fillRect(0, 0, width, height);
+                await page.render({ canvasContext: ctx, viewport }).promise;
+                const box = mainContentBox(ctx.getImageData(0, 0, width, height).data, width, height, TRIM_SCALE);
+                canvas.width = 0;
+                canvas.height = 0;
+                page.cleanup();
+                if (!box) throw new Error(`No content found on reference page ${pageNumber}.`);
+                return uniformCut([marginsFromBox(box, width, height, TRIM_SCALE)]);
             } finally {
                 await pdf.destroy();
             }
-            return uniformCut(found);
         }
 
         async function cropFile(file, cut) {
@@ -314,6 +362,11 @@ if (typeof document !== 'undefined') {
                 showError('Upload both PDFs first.');
                 return;
             }
+            const pageNumbers = refInputs.map((input) => parseInt(input.value, 10));
+            if (pageNumbers.some((page) => !Number.isInteger(page) || page < 1)) {
+                showError('Enter a reference page for each PDF.');
+                return;
+            }
 
             const original = button.innerHTML;
             button.disabled = true;
@@ -324,12 +377,9 @@ if (typeof document !== 'undefined') {
             try {
                 const cuts = [];
                 for (let index = 0; index < files.length; index++) {
-                    status.textContent = `Finding the white edge on PDF ${index + 1}...`;
-                    cuts.push(await measureMargins(files[index], (page, total) => {
-                        const done = index * 0.4 + ((page - 1) / total) * 0.4;
-                        progress.style.width = `${done * 100}%`;
-                        status.textContent = `Finding the white edge on PDF ${index + 1}, page ${page} of ${total}...`;
-                    }));
+                    status.textContent = `Reading reference page ${pageNumbers[index]} on PDF ${index + 1}...`;
+                    progress.style.width = `${index * 40}%`;
+                    cuts.push(await measureReference(files[index], pageNumbers[index]));
                 }
 
                 const reports = [];
@@ -342,12 +392,13 @@ if (typeof document !== 'undefined') {
                     ready[index] = { bytes: cropped.bytes, filename };
                     downloads[index].querySelector('span').textContent = filename;
                     sizes.push(cropped.sizes);
-                    reports.push(`${files[index].name}\n${cutLine(cuts[index])}\nTrimmed size: ${formatSizes(cropped.sizes)}`);
+                    reports.push(`${files[index].name}\nReference page ${pageNumbers[index]}\n${cutLine(cuts[index])}\nTrimmed size: ${formatSizes(cropped.sizes)}`);
                 }
 
                 const same = sizesMatch(sizes[0], sizes[1]);
+                const shared = uniqueSizes(sizes[0])[0][0].replace('×', ' × ');
                 reports.push(same
-                    ? `The two trimmed PDFs are the same size: ${formatSizes(sizes[0])}.`
+                    ? `The two trimmed PDFs are the same size: ${shared} pt.`
                     : 'The two trimmed PDFs are different in size.');
                 log.textContent = reports.join('\n\n');
                 log.className = same
@@ -359,7 +410,7 @@ if (typeof document !== 'undefined') {
             } catch (err) {
                 console.error(err);
                 ready = [null, null];
-                showError('Could not trim these PDFs. They might be corrupted or password protected.');
+                showError(err && err.message ? err.message : 'Could not trim these PDFs. They might be corrupted or password protected.');
             } finally {
                 button.disabled = false;
                 button.classList.remove('opacity-50', 'cursor-not-allowed');
