@@ -1,10 +1,10 @@
 # PDF Diff Checker
 
-Two browser tools on one site: compare two PDFs, or split a booklet PDF into PNG pieces.
+Three browser tools on one site: compare two PDFs, split a booklet PDF into PNG pieces, or trim the white edge off two PDFs.
 
 **Privacy:** All processing happens in your browser. PDFs are never uploaded to any server.
 
-Open **PDF Split** from the title next to PDF Diff Checker, or go to `#split`.
+Open **PDF Split** or **PDF Trim** from the titles next to PDF Diff Checker.
 
 ---
 
@@ -12,6 +12,7 @@ Open **PDF Split** from the title next to PDF Diff Checker, or go to `#split`.
 
 - Drag-and-drop upload for two PDF files
 - Choose which pages to compare (for example, old pages 2–5 against new pages 3–6)
+- Trim each PDF’s white edge, then scale both pages to the same size so the main content lines up
 - Page-by-page visual comparison
 - **Deleted text** shown in dark red, **added text** in dark blue
 - **Identical Text Opacity** slider (0% = invisible, 100% = fully visible)
@@ -27,22 +28,30 @@ Open **PDF Split** from the title next to PDF Diff Checker, or go to `#split`.
 - Names follow the booklet order: `1-top.png`, then `2-3-top-left.png`, and a tall last sheet such as `66-top.png`
 - Choose 100, 150, or 300 DPI
 
+### PDF Trim
+
+- Upload two PDFs and cut only the white edge
+- Pages are not scaled or stretched
+- If the trimmed page sizes still differ, the page shows a log that the two trimmed PDFs are different in size
+- Download both trimmed PDFs, then compare them with PDF Diff Checker
+
 ---
 
 ## Project structure
 
 ```
 PDF_Diff/
-├── index.html      ← The website (both tools)
+├── index.html      ← The website
 ├── script.js       ← PDF comparison
 ├── split.js        ← Booklet split into PNGs
+├── trim.js         ← Cut the white edge off two PDFs
 ├── README.md       ← This file
 ├── server.js       ← Optional: local testing only
 ├── package.json    ← Optional: local testing only
 └── .gitignore
 ```
 
-For **GitHub Pages**, `index.html`, `script.js`, and `split.js` are the site. The rest is for local development and documentation.
+For **GitHub Pages**, `index.html`, `script.js`, `split.js`, and `trim.js` are the site. The rest is for local development and documentation.
 
 ---
 
@@ -151,6 +160,14 @@ git push -u origin main
 3. Choose **100**, **150**, or **300** DPI.
 4. Click **Split and download ZIP**. The file stays on your computer and the ZIP downloads when it is ready.
 
+### PDF Trim
+
+1. Click **PDF Trim** in the header (or open `#trim`).
+2. Upload two PDFs.
+3. Click **Trim both PDFs**.
+4. Read the log. It shows how much white edge was cut and whether the two trimmed PDFs are the same size.
+5. Download each trimmed PDF, then open **PDF Diff Checker** and compare those files.
+
 ---
 
 ## Updating the site after changes
@@ -183,6 +200,7 @@ GitHub Pages will redeploy automatically within a few minutes.
 
 - [PDF.js](https://mozilla.github.io/pdf.js/) — render PDFs in the browser
 - [jsPDF](https://github.com/parallax/jsPDF) — export comparison as PDF
+- [pdf-lib](https://pdf-lib.js.org/) — cut PDF page edges without redrawing the content
 - [Tailwind CSS](https://tailwindcss.com/) — UI styling
 
 No backend server is required for the live GitHub Pages site.
